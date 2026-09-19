@@ -1,4 +1,4 @@
-cocotb==2.1.0
+cocotb==2.0.1
 pytest==9.1.1
 pytest-sugar==1.1.1
 PyYAML==6.0.3
