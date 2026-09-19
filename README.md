@@ -1,42 +1,99 @@
-![](../../workflows/gds/badge.svg) ![](../../workflows/docs/badge.svg) ![](../../workflows/test/badge.svg) ![](../../workflows/fpga/badge.svg)
+[![gds](https://github.com/zanderivo/tt-submission-cohort3/actions/workflows/gds.yaml/badge.svg)](https://github.com/zanderivo/tt-submission-cohort3/actions/workflows/gds.yaml)
+[![test](https://github.com/zanderivo/tt-submission-cohort3/actions/workflows/test.yaml/badge.svg)](https://github.com/zanderivo/tt-submission-cohort3/actions/workflows/test.yaml)
+[![docs](https://github.com/zanderivo/tt-submission-cohort3/actions/workflows/docs.yaml/badge.svg)](https://github.com/zanderivo/tt-submission-cohort3/actions/workflows/docs.yaml)
 
-# Tiny Tapeout Verilog Project Template
+# Tiny Tapeout Verilog ASIC Development Baseline
 
-- [Read the documentation for project](docs/info.md)
+This repository is a Tiny Tapeout 1x1 Sky130 Verilog project based on `TinyTapeout/ttsky-verilog-template`. It currently contains the mandatory **smoke-test tile**, not the final application: `tt_um_smoketest` is an asynchronously reset 8-bit registered counter used to qualify the local and GitHub RTL-to-GDS pipeline.
 
-## What is Tiny Tapeout?
+See [the generated project documentation](docs/info.md) for operation and hardware testing details.
 
-Tiny Tapeout is an educational project that aims to make it easier and cheaper than ever to get your digital and analog designs manufactured on a real chip.
+## Repository layout
 
-To learn more and get started, visit https://tinytapeout.com.
+| Path | Purpose |
+|---|---|
+| `src/project.v` | Synthesizable Tiny Tapeout top module |
+| `src/config.json` | LibreLane 1x1 Sky130 hardening configuration |
+| `test/tb.v` | Cocotb-compatible RTL and gate-level wrapper |
+| `test/test.py` | Self-checking ten-cycle smoke test |
+| `test/Makefile` | Icarus simulation, lint, and gate-level targets |
+| `info.yaml` | Tiny Tapeout metadata, source list, and pinout |
+| `.github/workflows/` | Test, GDS/precheck/GL/viewer, docs, and FPGA automation |
+| `scripts/` | Reproducible Windows setup and local verification |
 
-## Set up your Verilog project
+## Prerequisites
 
-1. Add your Verilog files to the `src` folder.
-2. Edit the [info.yaml](info.yaml) and update information about your project, paying special attention to the `source_files` and `top_module` properties. If you are upgrading an existing Tiny Tapeout project, check out our [online info.yaml migration tool](https://tinytapeout.github.io/tt-yaml-upgrade-tool/).
-3. Edit [docs/info.md](docs/info.md) and add a description of your project.
-4. Adapt the testbench to your design. See [test/README.md](test/README.md) for more information.
+- Git and GitHub CLI
+- Icarus Verilog/VVP 11 or newer
+- GTKWave
+- GNU Make
+- Python 3.10 or newer with the pinned packages in `test/requirements.txt`
 
-The GitHub action will automatically build the ASIC files using [LibreLane](https://www.zerotoasiccourse.com/terminology/librelane/).
+### Windows setup
 
-## Enable GitHub actions to build the results page
+Open PowerShell in the repository root and run:
 
-- [Enabling GitHub Pages](https://tinytapeout.com/faq/#my-github-action-is-failing-on-the-pages-part)
+```powershell
+pwsh -File .\scripts\setup-windows.ps1
+```
 
-## Resources
+The script installs pinned packages with WinGet, updates the user PATH, and installs the Python dependencies. Open a new terminal afterward. Authentication is intentionally interactive:
 
-- [FAQ](https://tinytapeout.com/faq/)
-- [Digital design lessons](https://tinytapeout.com/digital_design/)
-- [Learn how semiconductors work](https://tinytapeout.com/siliwiz/)
-- [Join the community](https://tinytapeout.com/discord)
-- [Build your design locally](https://www.tinytapeout.com/guides/local-hardening/)
+```powershell
+gh auth login
+```
 
-## What next?
+### Linux setup
 
-- [Submit your design to the next shuttle](https://app.tinytapeout.com/).
-- Edit [this README](README.md) and explain your design, how it works, and how to test it.
-- Share your project on your social network of choice:
-  - LinkedIn [#tinytapeout](https://www.linkedin.com/search/results/content/?keywords=%23tinytapeout) [@TinyTapeout](https://www.linkedin.com/company/100708654/)
-  - Mastodon [#tinytapeout](https://chaos.social/tags/tinytapeout) [@matthewvenn](https://chaos.social/@matthewvenn)
-  - X (formerly Twitter) [#tinytapeout](https://twitter.com/hashtag/tinytapeout) [@tinytapeout](https://twitter.com/tinytapeout)
-  - Bluesky [@tinytapeout.com](https://bsky.app/profile/tinytapeout.com)
+Install Icarus Verilog, GTKWave, GNU Make, Python 3.10+, and GitHub CLI with your system package manager, then run:
+
+```bash
+python3 -m pip install -r test/requirements.txt
+```
+
+## Local quality gate
+
+On Windows, run the complete check from the repository root:
+
+```powershell
+pwsh -File .\scripts\check.ps1
+```
+
+Or run the portable commands directly:
+
+```bash
+cd test
+make lint
+make clean
+make
+```
+
+Expected result: metadata/top-module bindings validate and one Cocotb test passes, with the counter producing values 1 through 10 on consecutive rising clock edges. The waveform is written to `test/tb.fst` and can be opened with `gtkwave test/tb.fst test/tb.gtkw`.
+
+## GitHub CI/CD
+
+The `test` workflow runs lint and RTL simulation on pushes, pull requests, and manual dispatches. The `gds` workflow runs the four Tiny Tapeout delivery jobs: LibreLane GDS hardening, precheck, gate-level simulation, and viewer generation.
+
+After authenticating GitHub CLI:
+
+```powershell
+gh workflow run test.yaml --repo zanderivo/tt-submission-cohort3 --ref main
+gh run list --repo zanderivo/tt-submission-cohort3 --limit 10
+gh run watch --repo zanderivo/tt-submission-cohort3
+```
+
+Do not trigger a final GDS delivery from uncommitted local files. Once an intentional commit is pushed, run or inspect `gds.yaml` in the same way.
+
+## Final-application handoff checklist
+
+Before replacing the smoke tile:
+
+1. Choose the application behavior and unique top name `tt_um_zanderivo_<project_name>`.
+2. Preserve the Tiny Tapeout interface and assign every output.
+3. Update `RTL_TOP` in `test/Makefile`, the DUT in `test/tb.v`, and `top_module` in `info.yaml` together.
+4. Replace the smoke assertions with comprehensive application tests.
+5. Update `info.yaml`, this README, and `docs/info.md` with the final clock and pinout.
+6. Keep multi-bit hardware multipliers, inferred latches, and large inferred memories out of the design.
+7. Pass local lint/simulation, then confirm `test`, `gds`, `precheck`, `gl_test`, and `viewer` are green before submission.
+
+No final application RTL has been started in this baseline.

@@ -1,47 +1,55 @@
-# Sample testbench for a Tiny Tapeout project
+# Tiny Tapeout smoke-test bench
 
-This is a sample testbench for a Tiny Tapeout project. It uses [cocotb](https://docs.cocotb.org/en/stable/) to drive the DUT and check the outputs.
-See below to get started or for more information, check the [website](https://tinytapeout.com/hdl/testing/).
+This directory contains the Cocotb harness for `tt_um_smoketest`. It uses Icarus Verilog to compile the RTL and checks asynchronous reset, unused bidirectional pins, and ten consecutive counter increments.
 
-## Setting up
+## Setup
 
-1. Edit [Makefile](Makefile) and modify `PROJECT_SOURCES` to point to your Verilog files.
-2. Edit [tb.v](tb.v) and replace `tt_um_example` with your module name.
-
-## How to run
-
-To run the RTL simulation:
+Install the exact Python packages listed in `requirements.txt`. On Windows, run `..\scripts\setup-windows.ps1` from PowerShell; on Linux or in the dev container, run:
 
 ```sh
-make -B
+python3 -m pip install -r requirements.txt
 ```
 
-To run gatelevel simulation, first harden your project and copy `../runs/wokwi/results/final/verilog/gl/{your_module_name}.v` to `gate_level_netlist.v`.
+When the final application replaces the smoke tile, update all of these together:
 
-Then run:
+- `RTL_TOP` and `PROJECT_SOURCES` in `Makefile`
+- the instantiated DUT in `tb.v`
+- the assertions in `test.py`
+- `project.top_module` and `project.source_files` in `../info.yaml`
+
+## RTL quality gate
+
+From this directory:
 
 ```sh
-make -B GATES=yes
+make lint
+make clean
+make
 ```
 
-If you wish to save the waveform in VCD format instead of FST format, edit tb.v to use `$dumpfile("tb.vcd");` and then run:
+The simulation writes `results.xml` and the `tb.fst` waveform. On Windows, the repository-level wrapper performs the same checks and rejects failures recorded in the XML:
+
+```powershell
+pwsh -File ..\scripts\check.ps1
+```
+
+## Gate-level simulation
+
+After the GDS workflow generates a synthesized netlist, copy it to `gate_level_netlist.v` and run:
 
 ```sh
-make -B FST=
+make clean
+make GATES=yes
 ```
 
-This will generate `tb.vcd` instead of `tb.fst`.
+The testbench conditionally supplies `VPWR` and `VGND` when `GL_TEST` is enabled.
 
-## How to view the waveform file
+## Waveforms
 
-Using GTKWave
+Open the FST waveform with GTKWave:
 
 ```sh
 gtkwave tb.fst tb.gtkw
 ```
 
-Using Surfer
-
-```sh
-surfer tb.fst
-```
+To generate VCD instead, change the dump filename in `tb.v` to `tb.vcd` and invoke `make FST=`.

@@ -5,7 +5,7 @@
 SIM ?= icarus
 FST ?= -fst # Use more efficient FST format
 TOPLEVEL_LANG ?= verilog
-SRC_DIR = $(PWD)/../src
+SRC_DIR = $(CURDIR)/../src
 PROJECT_SOURCES = project.v
 
 ifneq ($(GATES),yes)
@@ -27,7 +27,7 @@ VERILOG_SOURCES += $(PDK_ROOT)/sky130A/libs.ref/sky130_fd_sc_hd/verilog/primitiv
 VERILOG_SOURCES += $(PDK_ROOT)/sky130A/libs.ref/sky130_fd_sc_hd/verilog/sky130_fd_sc_hd.v
 
 # this gets copied in by the GDS action workflow
-VERILOG_SOURCES += $(PWD)/gate_level_netlist.v
+VERILOG_SOURCES += $(CURDIR)/gate_level_netlist.v
 
 endif
 
@@ -35,7 +35,7 @@ endif
 COMPILE_ARGS 		+= -I$(SRC_DIR)
 
 # Include the testbench sources:
-VERILOG_SOURCES += $(PWD)/tb.v
+VERILOG_SOURCES += $(CURDIR)/tb.v
 TOPLEVEL = tb
 
 # List test modules to run, separated by commas and without the .py suffix:
@@ -43,3 +43,13 @@ COCOTB_TEST_MODULES = test
 
 # include cocotb's make rules to take care of the simulator setup
 include $(shell cocotb-config --makefiles)/Makefile.sim
+
+# Project-specific static compile gate. Update RTL_TOP when the final tile is named.
+RTL_TOP ?= tt_um_smoketest
+
+.PHONY: lint check
+lint:
+	@mkdir -p $(SIM_BUILD)
+	iverilog -g2012 -Wall -Wimplicit -s $(RTL_TOP) -o $(SIM_BUILD)/lint.vvp $(addprefix $(SRC_DIR)/,$(PROJECT_SOURCES))
+
+check: lint sim
