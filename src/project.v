@@ -120,19 +120,19 @@ module tt_um_zanderivo_voronoi (
 
     distance_lane lane0 (
         .qx(query_x), .qy(query_y), .cx(c0x), .cy(c0y), .mode(mode_active),
-        .dist(d0), .dx(dx0), .dy(dy0), .xge(xg0), .yge(yg0)
+        .dval(d0), .dx(dx0), .dy(dy0), .xge(xg0), .yge(yg0)
     );
     distance_lane lane1 (
         .qx(query_x), .qy(query_y), .cx(c1x), .cy(c1y), .mode(mode_active),
-        .dist(d1), .dx(dx1), .dy(dy1), .xge(xg1), .yge(yg1)
+        .dval(d1), .dx(dx1), .dy(dy1), .xge(xg1), .yge(yg1)
     );
     distance_lane lane2 (
         .qx(query_x), .qy(query_y), .cx(c2x), .cy(c2y), .mode(mode_active),
-        .dist(d2), .dx(dx2), .dy(dy2), .xge(xg2), .yge(yg2)
+        .dval(d2), .dx(dx2), .dy(dy2), .xge(xg2), .yge(yg2)
     );
     distance_lane lane3 (
         .qx(query_x), .qy(query_y), .cx(c3x), .cy(c3y), .mode(mode_active),
-        .dist(d3), .dx(dx3), .dy(dy3), .xge(xg3), .yge(yg3)
+        .dval(d3), .dx(dx3), .dy(dy3), .xge(xg3), .yge(yg3)
     );
 
     // Deterministic lowest-index argmin.
@@ -337,7 +337,7 @@ module distance_lane (
     input  wire [5:0] cx,
     input  wire [5:0] cy,
     input  wire       mode,
-    output wire [6:0] dist,
+    output wire [6:0] dval,
     output wire [5:0] dx,
     output wire [5:0] dy,
     output wire       xge,
@@ -354,7 +354,7 @@ module distance_lane (
 
     wire [5:0] dmax = (dx >= dy) ? dx : dy;
 
-    assign dist = mode ? {1'b0, dmax} : ({1'b0, dx} + {1'b0, dy});
+    assign dval = mode ? {1'b0, dmax} : ({1'b0, dx} + {1'b0, dy});
 
 endmodule
 
