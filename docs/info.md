@@ -1,6 +1,8 @@
 ## How it works
 
-This project is a 1x1 Tiny Tapeout VGA nearest-prototype visualizer. It uses a 25.175 MHz pixel clock to generate a 640×480 display. Four colored prototypes divide the left side of the screen into nearest-prototype regions, while the right side shows the active mode and training status.
+This project is a 1x1 Tiny Tapeout VGA nearest-prototype visualizer. It uses a 25.175 MHz pixel clock to generate a 640×480 display. Four colored prototypes divide the left 512×480 pixels into nearest-prototype regions on a 64×60 logical grid, so each cell is an 8×8 block of screen pixels. The right 128×480 pixels show the active metric, the training status, and a prototype-color key using geometric blocks only.
+
+Six-bit logical coordinates are a deliberate resolution choice that keeps four parallel distance lanes, the argmin tree, and the prototype state inside one tile. Region boundaries are blocky at 8-pixel granularity as a result.
 
 The input metric selects how distance is measured:
 
@@ -23,7 +25,9 @@ The input metric selects how distance is measured:
 | `ui_in[6]` | Select direction: `0` decrement, `1` increment |
 | `ui_in[7]` | Step strobe for a manual move |
 
-A rising edge on Step moves the selected coordinate by one logical unit at the next frame boundary. Online training uses an internal pseudo-random sample to slowly move the nearest prototype. Keep selector inputs stable around a Step pulse.
+A rising edge on Step moves the selected coordinate by one logical cell, which is 8 screen pixels, at the next frame boundary. Keep the selector, axis, and direction inputs stable from the Step edge through that frame boundary, since the payload is sampled when the move is applied.
+
+Online training takes one pseudo-random sample per frame from an internal 16-bit LFSR, rejects samples below the viewport, and moves only the nearest prototype a quarter of the way toward the sample on each axis. The update reuses the winning display lane's own delta, so training adds no second distance datapath.
 
 ## How to use
 

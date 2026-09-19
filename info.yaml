@@ -3,7 +3,7 @@ project:
   title: "Two-Metric VGA Nearest-Prototype Visualizer"
   author: "zanderivo"
   discord: ""
-  description: "640x480 VGA nearest-prototype visualizer with two selectable distance metrics, manual prototype moves, and online training."
+  description: "640x480 VGA nearest-prototype visualizer on a 64x60 logical grid with two selectable distance metrics, manual prototype moves, and online training."
   language: "Verilog"
   clock_hz: 25175000
   tiles: "1x1"

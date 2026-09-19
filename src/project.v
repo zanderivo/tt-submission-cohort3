@@ -16,13 +16,29 @@ module tt_um_zanderivo_voronoi (
     input  wire       rst_n
 );
 
+    // Logical grid is 64 x 60; every logical cell is an 8x8 block of screen
+    // pixels inside the 512x480 viewport. Six-bit coordinates keep the four
+    // parallel distance lanes, the argmin tree and the prototype registers
+    // narrow enough for a 1x1 tile.
+    localparam [5:0] X_MAX = 6'd63;
+    localparam [5:0] Y_MAX = 6'd59;
+
+    // ------------------------------------------------------------ VGA timing
     reg [9:0] h_count;
     reg [9:0] v_count;
 
-    wire display_on = (h_count < 10'd640) && (v_count < 10'd480);
-    wire viewport_on = display_on && (h_count < 10'd512);
-    wire sidebar_on = display_on && (h_count >= 10'd512);
-    wire frame_tick = (h_count == 10'd799) && (v_count == 10'd524);
+    wire h_last = (h_count == 10'd799);
+    wire v_last = (v_count == 10'd524);
+
+    wire h_active = (h_count < 10'd640);
+    wire v_active = (v_count < 10'd480);
+
+    // h_count[9] splits the active line at 512: low half is the viewport,
+    // high half is the sidebar. No extra comparator needed.
+    wire viewport_on = v_active && !h_count[9];
+    wire sidebar_on  = v_active && h_count[9] && h_active;
+
+    wire frame_tick = h_last && v_last;
     wire hsync_n = !((h_count >= 10'd656) && (h_count <= 10'd751));
     wire vsync_n = !((v_count >= 10'd490) && (v_count <= 10'd491));
 
@@ -30,290 +46,234 @@ module tt_um_zanderivo_voronoi (
         if (!rst_n) begin
             h_count <= 10'd0;
             v_count <= 10'd0;
-        end else if (h_count == 10'd799) begin
+        end else if (h_last) begin
             h_count <= 10'd0;
-            if (v_count == 10'd524)
-                v_count <= 10'd0;
-            else
-                v_count <= v_count + 10'd1;
+            v_count <= v_last ? 10'd0 : (v_count + 10'd1);
         end else begin
             h_count <= h_count + 10'd1;
         end
     end
 
-    reg [7:0] ui_meta;
-    reg [7:0] ui_sync;
-    reg       step_sync_d;
+    // -------------------------------------------------------- input capture
+    // Level requests take one synchronizing flop; they are captured a second
+    // time at the frame boundary, which completes the two-stage handoff. Only
+    // the step strobe needs a dedicated two-flop synchronizer plus a delayed
+    // copy for edge detection.
+    reg       mode_req;
+    reg       train_req;
+    reg [1:0] id_req;
+    reg       axis_req;
+    reg       dir_req;
+    reg       step_s1;
+    reg       step_s2;
+    reg       step_d;
 
-    wire step_rise = ui_sync[7] && !step_sync_d;
+    wire step_rise = step_s2 && !step_d;
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            ui_meta     <= 8'd0;
-            ui_sync     <= 8'd0;
-            step_sync_d <= 1'b0;
+            mode_req  <= 1'b0;
+            train_req <= 1'b0;
+            id_req    <= 2'd0;
+            axis_req  <= 1'b0;
+            dir_req   <= 1'b0;
+            step_s1   <= 1'b0;
+            step_s2   <= 1'b0;
+            step_d    <= 1'b0;
         end else begin
-            ui_meta     <= ui_in;
-            ui_sync     <= ui_meta;
-            step_sync_d <= ui_sync[7];
+            mode_req  <= ui_in[0];
+            train_req <= ui_in[2];
+            id_req    <= ui_in[4:3];
+            axis_req  <= ui_in[5];
+            dir_req   <= ui_in[6];
+            step_s1   <= ui_in[7];
+            step_s2   <= step_s1;
+            step_d    <= step_s2;
         end
     end
 
-    reg       mode_active;
-    reg       train_active;
+    // ------------------------------------------------------------ chip state
+    reg mode_active;
+    reg train_active;
+    reg pending;
 
-    reg [7:0] c0_x;
-    reg [7:0] c0_y;
-    reg [7:0] c1_x;
-    reg [7:0] c1_y;
-    reg [7:0] c2_x;
-    reg [7:0] c2_y;
-    reg [7:0] c3_x;
-    reg [7:0] c3_y;
+    reg [5:0] c0x, c0y;
+    reg [5:0] c1x, c1y;
+    reg [5:0] c2x, c2y;
+    reg [5:0] c3x, c3y;
 
-    reg       manual_pending;
-    reg [1:0] manual_id;
-    reg       manual_axis;
-    reg       manual_direction;
-
-    reg [15:0] lfsr;
-    wire [7:0] sample_x = lfsr[7:0];
-    wire [7:0] sample_y = lfsr[15:8];
-    wire       sample_valid = sample_y < 8'd240;
+    reg  [15:0] lfsr;
     wire [15:0] lfsr_next = (lfsr >> 1) ^ (lfsr[0] ? 16'hB400 : 16'h0000);
+    wire [5:0]  sample_x  = lfsr[5:0];
+    wire [5:0]  sample_y  = lfsr[11:6];
+    wire        sample_ok = (sample_y <= Y_MAX);
 
-    wire [7:0] query_x = frame_tick ? sample_x : h_count[8:1];
-    wire [7:0] query_y = frame_tick ? sample_y : v_count[8:1];
+    // The classifier is shared: it answers the raster position during display
+    // and the training sample during the final blanking pixel.
+    wire [5:0] query_x = frame_tick ? sample_x : h_count[8:3];
+    wire [5:0] query_y = frame_tick ? sample_y : v_count[8:3];
 
-    wire [8:0] distance0;
-    wire [8:0] distance1;
-    wire [8:0] distance2;
-    wire [8:0] distance3;
-    wire [7:0] dx0;
-    wire [7:0] dy0;
-    wire [7:0] dx1;
-    wire [7:0] dy1;
-    wire [7:0] dx2;
-    wire [7:0] dy2;
-    wire [7:0] dx3;
-    wire [7:0] dy3;
+    // ----------------------------------------------------- distance lanes
+    wire [6:0] d0, d1, d2, d3;
+    wire [5:0] dx0, dy0, dx1, dy1, dx2, dy2, dx3, dy3;
+    wire       xg0, yg0, xg1, yg1, xg2, yg2, xg3, yg3;
 
     distance_lane lane0 (
-        .qx(query_x), .qy(query_y), .cx(c0_x), .cy(c0_y),
-        .mode(mode_active), .distance(distance0), .dx(dx0), .dy(dy0)
+        .qx(query_x), .qy(query_y), .cx(c0x), .cy(c0y), .mode(mode_active),
+        .dist(d0), .dx(dx0), .dy(dy0), .xge(xg0), .yge(yg0)
     );
     distance_lane lane1 (
-        .qx(query_x), .qy(query_y), .cx(c1_x), .cy(c1_y),
-        .mode(mode_active), .distance(distance1), .dx(dx1), .dy(dy1)
+        .qx(query_x), .qy(query_y), .cx(c1x), .cy(c1y), .mode(mode_active),
+        .dist(d1), .dx(dx1), .dy(dy1), .xge(xg1), .yge(yg1)
     );
     distance_lane lane2 (
-        .qx(query_x), .qy(query_y), .cx(c2_x), .cy(c2_y),
-        .mode(mode_active), .distance(distance2), .dx(dx2), .dy(dy2)
+        .qx(query_x), .qy(query_y), .cx(c2x), .cy(c2y), .mode(mode_active),
+        .dist(d2), .dx(dx2), .dy(dy2), .xge(xg2), .yge(yg2)
     );
     distance_lane lane3 (
-        .qx(query_x), .qy(query_y), .cx(c3_x), .cy(c3_y),
-        .mode(mode_active), .distance(distance3), .dx(dx3), .dy(dy3)
+        .qx(query_x), .qy(query_y), .cx(c3x), .cy(c3y), .mode(mode_active),
+        .dist(d3), .dx(dx3), .dy(dy3), .xge(xg3), .yge(yg3)
     );
 
-    wire       pair01_choose0 = distance0 <= distance1;
-    wire       pair23_choose2 = distance2 <= distance3;
-    wire [8:0] pair01_distance = pair01_choose0 ? distance0 : distance1;
-    wire [8:0] pair23_distance = pair23_choose2 ? distance2 : distance3;
-    wire [1:0] pair01_id = pair01_choose0 ? 2'd0 : 2'd1;
-    wire [1:0] pair23_id = pair23_choose2 ? 2'd2 : 2'd3;
-    wire       choose_pair01 = pair01_distance <= pair23_distance;
-    wire [1:0] winner_id = choose_pair01 ? pair01_id : pair23_id;
+    // Deterministic lowest-index argmin.
+    wire       a01 = (d0 <= d1);
+    wire       a23 = (d2 <= d3);
+    wire [6:0] dA  = a01 ? d0 : d1;
+    wire [6:0] dB  = a23 ? d2 : d3;
+    wire [1:0] iA  = a01 ? 2'd0 : 2'd1;
+    wire [1:0] iB  = a23 ? 2'd2 : 2'd3;
+    wire [1:0] win = (dA <= dB) ? iA : iB;
 
-    reg [7:0] winner_cx;
-    reg [7:0] winner_cy;
+    // --------------------------------------------- shared prototype update
+    // Manual nudges and training steps are the same operation: move one
+    // prototype along one or both axes by a magnitude, with saturation. A
+    // single add/sub per axis serves both, replacing the eight per-register
+    // increment/decrement units of the 1x2 design.
+    //
+    // The training magnitude reuses the winning lane's own |delta|: at
+    // frame_tick query_x == sample_x, so dx of the winning lane already is
+    // |sample_x - cx|, and dx[5:2] is |delta| >> 2.
+    wire [1:0] sel = pending ? id_req : win;
+
+    reg [5:0] sel_x, sel_y;
+    reg [3:0] sel_sx, sel_sy;
+    reg       sel_xg, sel_yg;
+
     always @* begin
-        case (winner_id)
-            2'd0: begin winner_cx = c0_x; winner_cy = c0_y; end
-            2'd1: begin winner_cx = c1_x; winner_cy = c1_y; end
-            2'd2: begin winner_cx = c2_x; winner_cy = c2_y; end
-            default: begin winner_cx = c3_x; winner_cy = c3_y; end
+        case (sel)
+            2'd0: begin
+                sel_x = c0x; sel_y = c0y;
+                sel_sx = dx0[5:2]; sel_sy = dy0[5:2];
+                sel_xg = xg0; sel_yg = yg0;
+            end
+            2'd1: begin
+                sel_x = c1x; sel_y = c1y;
+                sel_sx = dx1[5:2]; sel_sy = dy1[5:2];
+                sel_xg = xg1; sel_yg = yg1;
+            end
+            2'd2: begin
+                sel_x = c2x; sel_y = c2y;
+                sel_sx = dx2[5:2]; sel_sy = dy2[5:2];
+                sel_xg = xg2; sel_yg = yg2;
+            end
+            default: begin
+                sel_x = c3x; sel_y = c3y;
+                sel_sx = dx3[5:2]; sel_sy = dy3[5:2];
+                sel_xg = xg3; sel_yg = yg3;
+            end
         endcase
     end
 
-    function [4:0] abs_delta_div8;
-        input [7:0] lhs;
-        input [7:0] rhs;
-        begin
-            if (lhs >= rhs) begin
-                if (lhs[2:0] < rhs[2:0])
-                    abs_delta_div8 = lhs[7:3] - rhs[7:3] - 5'd1;
-                else
-                    abs_delta_div8 = lhs[7:3] - rhs[7:3];
-            end else begin
-                if (rhs[2:0] < lhs[2:0])
-                    abs_delta_div8 = rhs[7:3] - lhs[7:3] - 5'd1;
-                else
-                    abs_delta_div8 = rhs[7:3] - lhs[7:3];
-            end
-        end
-    endfunction
+    wire [3:0] step_x = pending ? 4'd1 : sel_sx;
+    wire [3:0] step_y = pending ? 4'd1 : sel_sy;
+    wire       dir_x  = pending ? dir_req : sel_xg;
+    wire       dir_y  = pending ? dir_req : sel_yg;
 
-    wire [4:0] train_step_x = abs_delta_div8(sample_x, winner_cx);
-    wire [4:0] train_step_y = abs_delta_div8(sample_y, winner_cy);
-    wire [8:0] train_sum_x = {1'b0, winner_cx} + {4'b0000, train_step_x};
-    wire [8:0] train_sum_y = {1'b0, winner_cy} + {4'b0000, train_step_y};
+    // One 7-bit adder per axis: add on increment, add the ones' complement
+    // with carry-in on decrement. Bit 6 then flags both kinds of overrun.
+    wire [6:0] mag_x = dir_x ? {3'b000, step_x} : ~{3'b000, step_x};
+    wire [6:0] mag_y = dir_y ? {3'b000, step_y} : ~{3'b000, step_y};
+    wire [6:0] res_x = {1'b0, sel_x} + mag_x + {6'b000000, ~dir_x};
+    wire [6:0] res_y = {1'b0, sel_y} + mag_y + {6'b000000, ~dir_y};
 
-    reg [7:0] train_new_x;
-    reg [7:0] train_new_y;
-    always @* begin
-        train_new_x = winner_cx;
-        train_new_y = winner_cy;
+    wire [5:0] new_x = res_x[6] ? (dir_x ? X_MAX : 6'd0) : res_x[5:0];
+    wire [5:0] new_y = dir_y ? ((res_y > {1'b0, Y_MAX}) ? Y_MAX : res_y[5:0])
+                             : (res_y[6] ? 6'd0 : res_y[5:0]);
 
-        if (sample_x > winner_cx) begin
-            if (train_sum_x > 9'd255)
-                train_new_x = 8'd255;
-            else
-                train_new_x = train_sum_x[7:0];
-        end else if (sample_x < winner_cx) begin
-            if ({3'b000, train_step_x} > winner_cx)
-                train_new_x = 8'd0;
-            else
-                train_new_x = winner_cx - {3'b000, train_step_x};
-        end
-
-        if (sample_y > winner_cy) begin
-            if (train_sum_y > 9'd239)
-                train_new_y = 8'd239;
-            else
-                train_new_y = train_sum_y[7:0];
-        end else if (sample_y < winner_cy) begin
-            if ({3'b000, train_step_y} > winner_cy)
-                train_new_y = 8'd0;
-            else
-                train_new_y = winner_cy - {3'b000, train_step_y};
-        end
-    end
+    wire train_go = train_active && sample_ok;
+    wire do_upd   = frame_tick && (pending || train_go);
+    wire upd_x    = do_upd && (pending ? !axis_req : 1'b1);
+    wire upd_y    = do_upd && (pending ?  axis_req : 1'b1);
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            mode_active      <= 1'b0;
-            train_active     <= 1'b0;
-            c0_x             <= 8'd64;
-            c0_y             <= 8'd60;
-            c1_x             <= 8'd192;
-            c1_y             <= 8'd60;
-            c2_x             <= 8'd64;
-            c2_y             <= 8'd180;
-            c3_x             <= 8'd192;
-            c3_y             <= 8'd180;
-            manual_pending   <= 1'b0;
-            manual_id        <= 2'd0;
-            manual_axis      <= 1'b0;
-            manual_direction <= 1'b0;
-            lfsr             <= 16'hACE1;
+            mode_active  <= 1'b0;
+            train_active <= 1'b0;
+            pending      <= 1'b0;
+            c0x <= 6'd16; c0y <= 6'd15;
+            c1x <= 6'd48; c1y <= 6'd15;
+            c2x <= 6'd16; c2y <= 6'd45;
+            c3x <= 6'd48; c3y <= 6'd45;
+            lfsr <= 16'hACE1;
         end else begin
             if (frame_tick) begin
-                mode_active  <= ui_sync[0];
-                train_active <= ui_sync[2];
+                mode_active  <= mode_req;
+                train_active <= train_req;
                 lfsr         <= lfsr_next;
-
-                if (manual_pending) begin
-                    case (manual_id)
-                        2'd0: begin
-                            if (!manual_axis) begin
-                                if (manual_direction) begin
-                                    if (c0_x != 8'd255) c0_x <= c0_x + 8'd1;
-                                end else begin
-                                    if (c0_x != 8'd0) c0_x <= c0_x - 8'd1;
-                                end
-                            end else begin
-                                if (manual_direction) begin
-                                    if (c0_y != 8'd239) c0_y <= c0_y + 8'd1;
-                                end else begin
-                                    if (c0_y != 8'd0) c0_y <= c0_y - 8'd1;
-                                end
-                            end
-                        end
-                        2'd1: begin
-                            if (!manual_axis) begin
-                                if (manual_direction) begin
-                                    if (c1_x != 8'd255) c1_x <= c1_x + 8'd1;
-                                end else begin
-                                    if (c1_x != 8'd0) c1_x <= c1_x - 8'd1;
-                                end
-                            end else begin
-                                if (manual_direction) begin
-                                    if (c1_y != 8'd239) c1_y <= c1_y + 8'd1;
-                                end else begin
-                                    if (c1_y != 8'd0) c1_y <= c1_y - 8'd1;
-                                end
-                            end
-                        end
-                        2'd2: begin
-                            if (!manual_axis) begin
-                                if (manual_direction) begin
-                                    if (c2_x != 8'd255) c2_x <= c2_x + 8'd1;
-                                end else begin
-                                    if (c2_x != 8'd0) c2_x <= c2_x - 8'd1;
-                                end
-                            end else begin
-                                if (manual_direction) begin
-                                    if (c2_y != 8'd239) c2_y <= c2_y + 8'd1;
-                                end else begin
-                                    if (c2_y != 8'd0) c2_y <= c2_y - 8'd1;
-                                end
-                            end
-                        end
-                        default: begin
-                            if (!manual_axis) begin
-                                if (manual_direction) begin
-                                    if (c3_x != 8'd255) c3_x <= c3_x + 8'd1;
-                                end else begin
-                                    if (c3_x != 8'd0) c3_x <= c3_x - 8'd1;
-                                end
-                            end else begin
-                                if (manual_direction) begin
-                                    if (c3_y != 8'd239) c3_y <= c3_y + 8'd1;
-                                end else begin
-                                    if (c3_y != 8'd0) c3_y <= c3_y - 8'd1;
-                                end
-                            end
-                        end
-                    endcase
-                    manual_pending <= 1'b0;
-                end else if (train_active && sample_valid) begin
-                    case (winner_id)
-                        2'd0: begin c0_x <= train_new_x; c0_y <= train_new_y; end
-                        2'd1: begin c1_x <= train_new_x; c1_y <= train_new_y; end
-                        2'd2: begin c2_x <= train_new_x; c2_y <= train_new_y; end
-                        default: begin c3_x <= train_new_x; c3_y <= train_new_y; end
-                    endcase
-                end
+                pending      <= 1'b0;
             end
 
-            if (step_rise && !manual_pending) begin
-                manual_pending   <= 1'b1;
-                manual_id        <= ui_sync[4:3];
-                manual_axis      <= ui_sync[5];
-                manual_direction <= ui_sync[6];
+            if (upd_x) begin
+                case (sel)
+                    2'd0:    c0x <= new_x;
+                    2'd1:    c1x <= new_x;
+                    2'd2:    c2x <= new_x;
+                    default: c3x <= new_x;
+                endcase
             end
+
+            if (upd_y) begin
+                case (sel)
+                    2'd0:    c0y <= new_y;
+                    2'd1:    c1y <= new_y;
+                    2'd2:    c2y <= new_y;
+                    default: c3y <= new_y;
+                endcase
+            end
+
+            // A step edge arriving on the frame boundary still registers.
+            if (step_rise && !pending)
+                pending <= 1'b1;
         end
     end
 
-    wire crosshair0 = ((dy0 <= 8'd1) && (dx0 <= 8'd4)) ||
-                      ((dx0 <= 8'd1) && (dy0 <= 8'd4));
-    wire crosshair1 = ((dy1 <= 8'd1) && (dx1 <= 8'd4)) ||
-                      ((dx1 <= 8'd1) && (dy1 <= 8'd4));
-    wire crosshair2 = ((dy2 <= 8'd1) && (dx2 <= 8'd4)) ||
-                      ((dx2 <= 8'd1) && (dy2 <= 8'd4));
-    wire crosshair3 = ((dy3 <= 8'd1) && (dx3 <= 8'd4)) ||
-                      ((dx3 <= 8'd1) && (dy3 <= 8'd4));
-    wire any_crosshair = crosshair0 || crosshair1 || crosshair2 || crosshair3;
+    // ------------------------------------------------------------ rendering
+    // Three-by-three logical plus sign per prototype: cheap zero/one tests on
+    // the deltas the lanes already produce.
+    wire hair0 = ((dx0 == 6'd0) && (dy0 <= 6'd1)) ||
+                 ((dy0 == 6'd0) && (dx0 <= 6'd1));
+    wire hair1 = ((dx1 == 6'd0) && (dy1 <= 6'd1)) ||
+                 ((dy1 == 6'd0) && (dx1 <= 6'd1));
+    wire hair2 = ((dx2 == 6'd0) && (dy2 <= 6'd1)) ||
+                 ((dy2 == 6'd0) && (dx2 <= 6'd1));
+    wire hair3 = ((dx3 == 6'd0) && (dy3 <= 6'd1)) ||
+                 ((dy3 == 6'd0) && (dx3 <= 6'd1));
+    wire hair  = hair0 || hair1 || hair2 || hair3;
 
-    wire mode_row_h = (h_count >= 10'd528) && (h_count <= 10'd623);
-    wire mode_row0 = mode_row_h && (v_count >= 10'd32)  && (v_count <= 10'd63);
-    wire mode_row1 = mode_row_h && (v_count >= 10'd80)  && (v_count <= 10'd111);
-    wire training_block = mode_row_h && (v_count >= 10'd256) && (v_count <= 10'd303);
-    wire palette_v = (v_count >= 10'd336) && (v_count <= 10'd367);
-    wire palette0 = palette_v && (h_count >= 10'd528) && (h_count <= 10'd547);
-    wire palette1 = palette_v && (h_count >= 10'd553) && (h_count <= 10'd572);
-    wire palette2 = palette_v && (h_count >= 10'd578) && (h_count <= 10'd597);
-    wire palette3 = palette_v && (h_count >= 10'd603) && (h_count <= 10'd622);
+    // Sidebar indicators sit on 32-pixel bands and 64-pixel columns, so every
+    // window decodes as an equality test on high counter bits instead of a
+    // pair of 10-bit range comparators.
+    wire [3:0] vband = v_count[8:5];
+    wire       sb_l  = sidebar_on && !h_count[6];
+    wire       sb_r  = sidebar_on &&  h_count[6];
+
+    wire ind_m0 = sb_l && (vband == 4'd1);
+    wire ind_m1 = sb_l && (vband == 4'd3);
+    wire ind_tr = sb_l && (vband == 4'd7);
+    wire pal0   = sb_r && (vband == 4'd10);
+    wire pal1   = sb_r && (vband == 4'd11);
+    wire pal2   = sb_r && (vband == 4'd12);
+    wire pal3   = sb_r && (vband == 4'd13);
 
     reg [1:0] red;
     reg [1:0] green;
@@ -324,38 +284,34 @@ module tt_um_zanderivo_voronoi (
         green = 2'd0;
         blue  = 2'd0;
 
-        if (display_on) begin
-            if (sidebar_on) begin
-                if (mode_row0) begin
-                    if (mode_active == 2'd0) begin red = 2'd3; green = 2'd3; blue = 2'd3; end
-                    else begin red = 2'd1; green = 2'd1; blue = 2'd1; end
-                end else if (mode_row1) begin
-                    if (mode_active == 2'd1) begin red = 2'd3; green = 2'd3; blue = 2'd3; end
-                    else begin red = 2'd1; green = 2'd1; blue = 2'd1; end
-                end else if (training_block) begin
-                    if (train_active) begin red = 2'd0; green = 2'd3; blue = 2'd0; end
-                    else begin red = 2'd1; green = 2'd0; blue = 2'd0; end
-                end else if (palette0) begin
-                    red = 2'd3; green = 2'd1; blue = 2'd0;
-                end else if (palette1) begin
-                    red = 2'd0; green = 2'd3; blue = 2'd0;
-                end else if (palette2) begin
-                    red = 2'd0; green = 2'd2; blue = 2'd3;
-                end else if (palette3) begin
-                    red = 2'd2; green = 2'd0; blue = 2'd3;
-                end
-            end else if (viewport_on) begin
-                if (any_crosshair) begin
-                    red = 2'd3; green = 2'd3; blue = 2'd3;
-                end else begin
-                    case (winner_id)
-                        2'd0: begin red = 2'd3; green = 2'd1; blue = 2'd0; end
-                        2'd1: begin red = 2'd0; green = 2'd3; blue = 2'd0; end
-                        2'd2: begin red = 2'd0; green = 2'd2; blue = 2'd3; end
-                        default: begin red = 2'd2; green = 2'd0; blue = 2'd3; end
-                    endcase
-                end
+        if (viewport_on) begin
+            if (hair) begin
+                red = 2'd3; green = 2'd3; blue = 2'd3;
+            end else begin
+                case (win)
+                    2'd0:    begin red = 2'd3; green = 2'd1; blue = 2'd0; end
+                    2'd1:    begin red = 2'd0; green = 2'd3; blue = 2'd0; end
+                    2'd2:    begin red = 2'd0; green = 2'd2; blue = 2'd3; end
+                    default: begin red = 2'd2; green = 2'd0; blue = 2'd3; end
+                endcase
             end
+        end else if (ind_m0) begin
+            if (!mode_active) begin red = 2'd3; green = 2'd3; blue = 2'd3; end
+            else              begin red = 2'd1; green = 2'd1; blue = 2'd1; end
+        end else if (ind_m1) begin
+            if (mode_active)  begin red = 2'd3; green = 2'd3; blue = 2'd3; end
+            else              begin red = 2'd1; green = 2'd1; blue = 2'd1; end
+        end else if (ind_tr) begin
+            if (train_active) begin red = 2'd0; green = 2'd3; blue = 2'd0; end
+            else              begin red = 2'd1; green = 2'd0; blue = 2'd0; end
+        end else if (pal0) begin
+            red = 2'd3; green = 2'd1; blue = 2'd0;
+        end else if (pal1) begin
+            red = 2'd0; green = 2'd3; blue = 2'd0;
+        end else if (pal2) begin
+            red = 2'd0; green = 2'd2; blue = 2'd3;
+        end else if (pal3) begin
+            red = 2'd2; green = 2'd0; blue = 2'd3;
         end
     end
 
@@ -371,32 +327,34 @@ module tt_um_zanderivo_voronoi (
     assign uio_out = 8'b00000000;
     assign uio_oe  = 8'b00000000;
 
-    wire _unused_ok = &{ena, uio_in, 1'b0};
+    wire _unused_ok = &{ena, uio_in, ui_in[1], 1'b0};
 
 endmodule
 
 module distance_lane (
-    input  wire [7:0] qx,
-    input  wire [7:0] qy,
-    input  wire [7:0] cx,
-    input  wire [7:0] cy,
+    input  wire [5:0] qx,
+    input  wire [5:0] qy,
+    input  wire [5:0] cx,
+    input  wire [5:0] cy,
     input  wire       mode,
-    output reg  [8:0] distance,
-    output wire [7:0] dx,
-    output wire [7:0] dy
+    output wire [6:0] dist,
+    output wire [5:0] dx,
+    output wire [5:0] dy,
+    output wire       xge,
+    output wire       yge
 );
 
-    assign dx = (qx >= cx) ? (qx - cx) : (cx - qx);
-    assign dy = (qy >= cy) ? (qy - cy) : (cy - qy);
+    // xge/yge are the comparison the magnitude already needs, exported so the
+    // update datapath does not instantiate its own direction comparators.
+    assign xge = (qx >= cx);
+    assign yge = (qy >= cy);
 
-    wire [7:0] max_d = (dx >= dy) ? dx : dy;
+    assign dx = xge ? (qx - cx) : (cx - qx);
+    assign dy = yge ? (qy - cy) : (cy - qy);
 
-    always @* begin
-        case (mode)
-            1'b0: distance = {1'b0, dx} + {1'b0, dy};
-            default: distance = {1'b0, max_d};
-        endcase
-    end
+    wire [5:0] dmax = (dx >= dy) ? dx : dy;
+
+    assign dist = mode ? {1'b0, dmax} : ({1'b0, dx} + {1'b0, dy});
 
 endmodule
 
