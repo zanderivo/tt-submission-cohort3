@@ -1,6 +1,6 @@
 # Four-Metric VGA Nearest-Prototype Visualizer
 
-This is a Tiny Tapeout 1x1 Verilog project targeting the **IHP 26b shuttle** and the **IHP SG13G2 130 nm BiCMOS PDK**. Its physical-delivery infrastructure is aligned with [`TinyTapeout/ttihp-verilog-template` revision `6598bef`](https://github.com/TinyTapeout/ttihp-verilog-template/commit/6598bef4d3159f19fe471a2a2225df52e6f5ad25). The devcontainer intentionally uses LibreLane 3.0.5 to match the `ttihp26b` action default.
+This is a Tiny Tapeout 1x2 Verilog project targeting the **IHP 26b shuttle** and the **IHP SG13G2 130 nm BiCMOS PDK**. Its physical-delivery infrastructure is aligned with [`TinyTapeout/ttihp-verilog-template` revision `6598bef`](https://github.com/TinyTapeout/ttihp-verilog-template/commit/6598bef4d3159f19fe471a2a2225df52e6f5ad25). The devcontainer intentionally uses LibreLane 3.0.5 to match the `ttihp26b` action default.
 
 `tt_um_zanderivo_voronoi` produces a 640x480 TinyVGA display that classifies a 256x240 logical viewport against four movable prototypes. It supports L1, L-infinity, an octagonal L2 approximation, and binary-coordinate Hamming distance, with deterministic lowest-ID ties. See [the generated project documentation](docs/info.md) for the complete behavior and hardware instructions.
 
@@ -28,7 +28,7 @@ TinyVGA outputs are `uo_out[0]=R1`, `[1]=G1`, `[2]=B1`, `[3]=VSync_n`, `[4]=R0`,
 | Path | Purpose |
 |---|---|
 | `src/project.v` | Verilog-2005-compatible visualizer and distance lanes |
-| `src/config.json` | LibreLane 1x1 IHP SG13G2 hardening configuration |
+| `src/config.json` | LibreLane 1x2 IHP SG13G2 hardening configuration |
 | `test/` | RTL/reference-model and IHP gate-level verification assets |
 | `info.yaml` | Tiny Tapeout metadata, source list, clock, and pinout |
 | `.github/workflows/` | Test, IHP GDS/precheck/GL/viewer, docs, and FPGA automation |

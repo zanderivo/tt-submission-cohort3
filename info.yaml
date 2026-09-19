@@ -6,7 +6,7 @@ project:
   description: "Interactive 640x480 VGA visualization of nearest-prototype regions under four selectable distance metrics, with manual and online centroid updates."
   language: "Verilog"
   clock_hz: 25175000
-  tiles: "1x1"
+  tiles: "1x2"
   top_module: "tt_um_zanderivo_voronoi"
   source_files:
     - "project.v"
