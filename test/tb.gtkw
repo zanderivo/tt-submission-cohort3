@@ -1,39 +1,63 @@
 [*]
-[*] GTKWave Analyzer v3.4.0 (w)1999-2022 BSI
-[*] Mon Nov 20 16:00:28 2023
+[*] GTKWave Analyzer save file for the VGA nearest-prototype tile
 [*]
-[dumpfile] "/home/uri/p/tt-new-template-proto/test/tb.fst"
-[dumpfile_mtime] "Mon Nov 20 15:58:34 2023"
-[dumpfile_size] 1110
-[savefile] "/home/uri/p/tt-new-template-proto/test/tb.gtkw"
+[dumpfile] "tb.fst"
 [timestart] 0
-[size] 1376 600
+[size] 1376 760
 [pos] -1 -1
-*-24.534533 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
 [treeopen] tb.
-[sst_width] 297
+[treeopen] tb.user_project.
+[sst_width] 320
 [signals_width] 230
 [sst_expanded] 1
-[sst_vpaned_height] 158
+[sst_vpaned_height] 220
+@200
+-Clock and reset
 @28
-tb.user_project.ena
-@29
-tb.user_project.clk
+tb.clk
+tb.rst_n
+tb.ena
+@200
+-Controls
+@22
+tb.ui_in[7:0]
+tb.user_project.mode_active[1:0]
+tb.user_project.train_active
+tb.user_project.manual_pending
+@200
+-VGA raster
+@22
+tb.user_project.h_count[9:0]
+tb.user_project.v_count[9:0]
 @28
-tb.user_project.rst_n
-@200
--Inputs
+tb.user_project.frame_tick
 @22
-tb.user_project.ui_in[7:0]
+tb.uo_out[7:0]
 @200
--Bidirectional Pins
+-Centroids
 @22
-tb.user_project.uio_in[7:0]
-tb.user_project.uio_oe[7:0]
-tb.user_project.uio_out[7:0]
+tb.user_project.c0_x[7:0]
+tb.user_project.c0_y[7:0]
+tb.user_project.c1_x[7:0]
+tb.user_project.c1_y[7:0]
+tb.user_project.c2_x[7:0]
+tb.user_project.c2_y[7:0]
+tb.user_project.c3_x[7:0]
+tb.user_project.c3_y[7:0]
 @200
--Output Pins
+-Classifier and training
 @22
-tb.user_project.uo_out[7:0]
+tb.user_project.distance0[8:0]
+tb.user_project.distance1[8:0]
+tb.user_project.distance2[8:0]
+tb.user_project.distance3[8:0]
+tb.user_project.winner_id[1:0]
+tb.user_project.lfsr[15:0]
+@200
+-Bidirectional tie-offs
+@22
+tb.uio_in[7:0]
+tb.uio_oe[7:0]
+tb.uio_out[7:0]
 [pattern_trace] 1
 [pattern_trace] 0

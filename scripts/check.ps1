@@ -30,6 +30,12 @@ if ($LASTEXITCODE -ne 0) {
 $testDirectory = Join-Path $PSScriptRoot "..\test"
 Push-Location $testDirectory
 try {
+    Write-Host "Running pure Python reference-model tests..."
+    & make model
+    if ($LASTEXITCODE -ne 0) {
+        throw "Reference-model tests failed (exit $LASTEXITCODE)."
+    }
+
     Write-Host "Running Verilog lint compile..."
     & make lint
     if ($LASTEXITCODE -ne 0) {
@@ -42,10 +48,10 @@ try {
         throw "Simulation clean failed (exit $LASTEXITCODE)."
     }
 
-    Write-Host "Running Cocotb smoke test..."
+    Write-Host "Running Cocotb application test..."
     & make
     if ($LASTEXITCODE -ne 0) {
-        throw "Cocotb smoke test failed (exit $LASTEXITCODE)."
+        throw "Cocotb application test failed (exit $LASTEXITCODE)."
     }
 
     $resultsPath = Join-Path $testDirectory "results.xml"
