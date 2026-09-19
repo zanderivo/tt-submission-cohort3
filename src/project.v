@@ -59,7 +59,7 @@ module tt_um_zanderivo_voronoi (
         end
     end
 
-    reg [1:0] mode_active;
+    reg       mode_active;
     reg       train_active;
 
     reg [7:0] c0_x;
@@ -191,7 +191,7 @@ module tt_um_zanderivo_voronoi (
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            mode_active      <= 2'b00;
+            mode_active      <= 1'b0;
             train_active     <= 1'b0;
             c0_x             <= 8'd64;
             c0_y             <= 8'd60;
@@ -208,7 +208,7 @@ module tt_um_zanderivo_voronoi (
             lfsr             <= 16'hACE1;
         end else begin
             if (frame_tick) begin
-                mode_active  <= ui_sync[1:0];
+                mode_active  <= ui_sync[0];
                 train_active <= ui_sync[2];
                 lfsr         <= lfsr_next;
 
@@ -308,8 +308,6 @@ module tt_um_zanderivo_voronoi (
     wire mode_row_h = (h_count >= 10'd528) && (h_count <= 10'd623);
     wire mode_row0 = mode_row_h && (v_count >= 10'd32)  && (v_count <= 10'd63);
     wire mode_row1 = mode_row_h && (v_count >= 10'd80)  && (v_count <= 10'd111);
-    wire mode_row2 = mode_row_h && (v_count >= 10'd128) && (v_count <= 10'd159);
-    wire mode_row3 = mode_row_h && (v_count >= 10'd176) && (v_count <= 10'd207);
     wire training_block = mode_row_h && (v_count >= 10'd256) && (v_count <= 10'd303);
     wire palette_v = (v_count >= 10'd336) && (v_count <= 10'd367);
     wire palette0 = palette_v && (h_count >= 10'd528) && (h_count <= 10'd547);
@@ -333,12 +331,6 @@ module tt_um_zanderivo_voronoi (
                     else begin red = 2'd1; green = 2'd1; blue = 2'd1; end
                 end else if (mode_row1) begin
                     if (mode_active == 2'd1) begin red = 2'd3; green = 2'd3; blue = 2'd3; end
-                    else begin red = 2'd1; green = 2'd1; blue = 2'd1; end
-                end else if (mode_row2) begin
-                    if (mode_active == 2'd2) begin red = 2'd3; green = 2'd3; blue = 2'd3; end
-                    else begin red = 2'd1; green = 2'd1; blue = 2'd1; end
-                end else if (mode_row3) begin
-                    if (mode_active == 2'd3) begin red = 2'd3; green = 2'd3; blue = 2'd3; end
                     else begin red = 2'd1; green = 2'd1; blue = 2'd1; end
                 end else if (training_block) begin
                     if (train_active) begin red = 2'd0; green = 2'd3; blue = 2'd0; end
@@ -388,7 +380,7 @@ module distance_lane (
     input  wire [7:0] qy,
     input  wire [7:0] cx,
     input  wire [7:0] cy,
-    input  wire [1:0] mode,
+    input  wire       mode,
     output reg  [8:0] distance,
     output wire [7:0] dx,
     output wire [7:0] dy
@@ -398,31 +390,11 @@ module distance_lane (
     assign dy = (qy >= cy) ? (qy - cy) : (cy - qy);
 
     wire [7:0] max_d = (dx >= dy) ? dx : dy;
-    wire [6:0] min_d_half = (dx >= dy) ? dy[7:1] : dx[7:1];
-    wire [15:0] xor_xy = {qx ^ cx, qy ^ cy};
-
-    wire [1:0] pop2_0 = {1'b0, xor_xy[0]}  + {1'b0, xor_xy[1]};
-    wire [1:0] pop2_1 = {1'b0, xor_xy[2]}  + {1'b0, xor_xy[3]};
-    wire [1:0] pop2_2 = {1'b0, xor_xy[4]}  + {1'b0, xor_xy[5]};
-    wire [1:0] pop2_3 = {1'b0, xor_xy[6]}  + {1'b0, xor_xy[7]};
-    wire [1:0] pop2_4 = {1'b0, xor_xy[8]}  + {1'b0, xor_xy[9]};
-    wire [1:0] pop2_5 = {1'b0, xor_xy[10]} + {1'b0, xor_xy[11]};
-    wire [1:0] pop2_6 = {1'b0, xor_xy[12]} + {1'b0, xor_xy[13]};
-    wire [1:0] pop2_7 = {1'b0, xor_xy[14]} + {1'b0, xor_xy[15]};
-    wire [2:0] pop4_0 = {1'b0, pop2_0} + {1'b0, pop2_1};
-    wire [2:0] pop4_1 = {1'b0, pop2_2} + {1'b0, pop2_3};
-    wire [2:0] pop4_2 = {1'b0, pop2_4} + {1'b0, pop2_5};
-    wire [2:0] pop4_3 = {1'b0, pop2_6} + {1'b0, pop2_7};
-    wire [3:0] pop8_0 = {1'b0, pop4_0} + {1'b0, pop4_1};
-    wire [3:0] pop8_1 = {1'b0, pop4_2} + {1'b0, pop4_3};
-    wire [4:0] pop16 = {1'b0, pop8_0} + {1'b0, pop8_1};
 
     always @* begin
         case (mode)
-            2'b00: distance = {1'b0, dx} + {1'b0, dy};
-            2'b01: distance = {1'b0, max_d};
-            2'b10: distance = {1'b0, max_d} + {2'b00, min_d_half};
-            default: distance = {4'b0000, pop16};
+            1'b0: distance = {1'b0, dx} + {1'b0, dy};
+            default: distance = {1'b0, max_d};
         endcase
     end
 

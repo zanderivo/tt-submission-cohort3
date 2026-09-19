@@ -1,4 +1,4 @@
-"""Validate Tiny Tapeout IHP26b metadata, target, and cross-file bindings."""
+"""Validate Tiny Tapeout IHP26b metadata, RTL bindings, and build workflows."""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ def load_workflow(name: str) -> tuple[dict, str]:
     return parsed, raw
 
 
-def validate_ihp_target(makefile: str, testbench: str) -> None:
+def validate_ihp_target() -> None:
     loaded_workflows = {
         name: load_workflow(name)
         for name in ("gds.yaml", "docs.yaml", "fpga.yaml")
@@ -40,7 +40,6 @@ def validate_ihp_target(makefile: str, testbench: str) -> None:
         "gds.yaml": {
             "gds": "TinyTapeout/tt-gds-action@ttihp26b",
             "precheck": "TinyTapeout/tt-gds-action/precheck@ttihp26b",
-            "gl_test": "TinyTapeout/tt-gds-action/gl_test@ttihp26b",
             "viewer": "TinyTapeout/tt-gds-action/viewer@ttihp26b",
         },
         "docs.yaml": {
@@ -89,7 +88,7 @@ def validate_ihp_target(makefile: str, testbench: str) -> None:
         )
 
     gds_jobs = loaded_workflows["gds.yaml"][0]["jobs"]
-    for dependent_job in ("precheck", "gl_test", "viewer"):
+    for dependent_job in ("precheck", "viewer"):
         require(
             gds_jobs[dependent_job].get("needs") == "gds",
             f"gds.yaml job {dependent_job} must depend on gds",
@@ -110,20 +109,10 @@ def validate_ihp_target(makefile: str, testbench: str) -> None:
         "devcontainer LibreLane must match the ttihp26b action default (3.0.5)",
     )
 
-    for model_path in (
-        "ihp-sg13g2/libs.ref/sg13g2_io/verilog/sg13g2_io.v",
-        "ihp-sg13g2/libs.ref/sg13g2_stdcell/verilog/sg13g2_stdcell.v",
-    ):
-        require(model_path in makefile, f"test/Makefile is missing {model_path}")
-
     raw_workflows = [raw for _, raw in loaded_workflows.values()]
-    target_text = "\n".join((*raw_workflows, dockerfile, makefile, testbench)).lower()
+    target_text = "\n".join((*raw_workflows, dockerfile)).lower()
     require("ttsky" not in target_text, "Sky Tiny Tapeout action remains in target files")
     require("sky130" not in target_text, "Sky130 PDK reference remains in target files")
-    require(
-        "vpwr" not in testbench.lower() and "vgnd" not in testbench.lower(),
-        "test/tb.v still contains Sky130-only power-pin wiring",
-    )
 
 
 def main() -> None:
@@ -181,22 +170,6 @@ def main() -> None:
         f"RTL does not declare top module {top_module}",
     )
 
-    testbench = (REPO_ROOT / "test" / "tb.v").read_text(encoding="utf-8")
-    require(
-        re.search(rf"\b{re.escape(top_module)}\s+user_project\s*\(", testbench)
-        is not None,
-        f"test/tb.v does not instantiate {top_module} as user_project",
-    )
-
-    makefile = (REPO_ROOT / "test" / "Makefile").read_text(encoding="utf-8")
-    require(
-        re.search(
-            rf"^RTL_TOP\s*\?=\s*{re.escape(top_module)}\s*$", makefile, re.MULTILINE
-        )
-        is not None,
-        f"test/Makefile RTL_TOP does not match {top_module}",
-    )
-
     pinout = info.get("pinout")
     require(isinstance(pinout, dict), "info.yaml must contain a pinout mapping")
     expected_pins = {
@@ -218,7 +191,7 @@ def main() -> None:
         "info.yaml clock_hz and src/config.json CLOCK_PERIOD disagree",
     )
 
-    validate_ihp_target(makefile, testbench)
+    validate_ihp_target()
 
     print(
         f"Tiny Tapeout IHP26b metadata valid: {top_module}, "

@@ -1,19 +1,19 @@
 # Tiny Tapeout project information
 project:
-  title: "Four-Metric VGA Nearest-Prototype Visualizer"
+  title: "Two-Metric VGA Nearest-Prototype Visualizer"
   author: "zanderivo"
   discord: ""
-  description: "640x480 VGA nearest-prototype visualizer with four selectable distance metrics, manual prototype moves, and online training."
+  description: "640x480 VGA nearest-prototype visualizer with two selectable distance metrics, manual prototype moves, and online training."
   language: "Verilog"
   clock_hz: 25175000
-  tiles: "1x2"
+  tiles: "1x1"
   top_module: "tt_um_zanderivo_voronoi"
   source_files:
     - "project.v"
 
 pinout:
-  ui[0]: "Metric request bit 0 (00 L1, 01 Linf, 10 octagonal L2, 11 Hamming)"
-  ui[1]: "Metric request bit 1"
+  ui[0]: "Metric request (0 L1, 1 Linf)"
+  ui[1]: "Reserved (ignored)"
   ui[2]: "Training enable request"
   ui[3]: "Manual centroid select bit 0"
   ui[4]: "Manual centroid select bit 1"

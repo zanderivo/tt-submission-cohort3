@@ -1,23 +1,22 @@
 ## How it works
 
-This project is a 1x2 Tiny Tapeout VGA nearest-prototype visualizer. It uses a 25.175 MHz pixel clock to generate a 640×480 display. Four colored prototypes divide the left side of the screen into nearest-prototype regions, while the right side shows the active mode and training status.
+This project is a 1x1 Tiny Tapeout VGA nearest-prototype visualizer. It uses a 25.175 MHz pixel clock to generate a 640×480 display. Four colored prototypes divide the left side of the screen into nearest-prototype regions, while the right side shows the active mode and training status.
 
 The input metric selects how distance is measured:
 
-| `ui_in[1:0]` | Metric |
+| `ui_in[0]` | Metric |
 |---|---|
-| `00` | Manhattan / L1 |
-| `01` | Chebyshev / L-infinity |
-| `10` | Octagonal L2 approximation |
-| `11` | Binary-coordinate Hamming distance |
+| `0` | Manhattan / L1 |
+| `1` | Chebyshev / L-infinity |
 
-White crosshairs show the prototype positions. Equal distances choose the lower-numbered prototype. The selected metric and training request update at a frame boundary so the displayed frame stays coherent.
+`ui_in[1]` is reserved and ignored. White crosshairs show the prototype positions. Equal distances choose the lower-numbered prototype. The selected metric and training request update at a frame boundary so the displayed frame stays coherent.
 
 ## Controls
 
 | Pin | Function |
 |---|---|
-| `ui_in[1:0]` | Select the distance metric |
+| `ui_in[0]` | Select the distance metric |
+| `ui_in[1]` | Reserved; ignored |
 | `ui_in[2]` | Enable online training |
 | `ui_in[4:3]` | Select prototype 0–3 |
 | `ui_in[5]` | Select axis: `0` X, `1` Y |
@@ -26,11 +25,11 @@ White crosshairs show the prototype positions. Equal distances choose the lower-
 
 A rising edge on Step moves the selected coordinate by one logical unit at the next frame boundary. Online training uses an internal pseudo-random sample to slowly move the nearest prototype. Keep selector inputs stable around a Step pulse.
 
-## How to test
+## How to use
 
 1. Connect a TinyVGA-compatible VGA PMOD to `uo_out` and a monitor that supports 640×480.
 2. Supply a stable 25.175 MHz clock and release reset.
-3. Use `ui_in[1:0]` to select a metric and observe the region pattern change on the next frame.
+3. Use `ui_in[0]` to select a metric and observe the region pattern change on the next frame.
 4. Select a prototype, axis, and direction; then pulse `ui_in[7]` to move its crosshair.
 5. Set `ui_in[2]` high to enable online training.
 
