@@ -1,4 +1,4 @@
-# Tiny Tapeout smoke-test bench
+# Tiny Tapeout IHP 26b smoke-test bench
 
 This directory contains the Cocotb harness for `tt_um_smoketest`. It uses Icarus Verilog to compile the RTL and checks asynchronous reset, unused bidirectional pins, and ten consecutive counter increments.
 
@@ -33,16 +33,16 @@ The simulation writes `results.xml` and the `tb.fst` waveform. On Windows, the r
 pwsh -File ..\scripts\check.ps1
 ```
 
-## Gate-level simulation
+## IHP gate-level simulation
 
-After the GDS workflow generates a synthesized netlist, copy it to `gate_level_netlist.v` and run:
+Use an environment with the `ihp-sg13g2` PDK available at `$PDK_ROOT/ihp-sg13g2`. After hardening the project, copy `../runs/wokwi/final/nl/tt_um_smoketest.nl.v` to `gate_level_netlist.v`, then run:
 
 ```sh
 make clean
 make GATES=yes
 ```
 
-The testbench conditionally supplies `VPWR` and `VGND` when `GL_TEST` is enabled.
+The gate-level target loads the official IHP SG13G2 I/O and standard-cell Verilog models. The testbench follows the IHP template contract and does not add the Sky130-only `VPWR`/`VGND` ports.
 
 ## Waveforms
 

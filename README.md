@@ -2,9 +2,11 @@
 [![test](https://github.com/zanderivo/tt-submission-cohort3/actions/workflows/test.yaml/badge.svg)](https://github.com/zanderivo/tt-submission-cohort3/actions/workflows/test.yaml)
 [![docs](https://github.com/zanderivo/tt-submission-cohort3/actions/workflows/docs.yaml/badge.svg)](https://github.com/zanderivo/tt-submission-cohort3/actions/workflows/docs.yaml)
 
-# Tiny Tapeout Verilog ASIC Development Baseline
+# Tiny Tapeout IHP 26b Verilog ASIC Development Baseline
 
-This repository is a Tiny Tapeout 1x1 Sky130 Verilog project based on `TinyTapeout/ttsky-verilog-template`. It currently contains the mandatory **smoke-test tile**, not the final application: `tt_um_smoketest` is an asynchronously reset 8-bit registered counter used to qualify the local and GitHub RTL-to-GDS pipeline.
+This repository is a Tiny Tapeout 1x1 Verilog project targeting the **IHP 26b shuttle** and the **IHP SG13G2 130 nm BiCMOS PDK**. Its physical-delivery infrastructure is aligned with [`TinyTapeout/ttihp-verilog-template` revision `6598bef`](https://github.com/TinyTapeout/ttihp-verilog-template/commit/6598bef4d3159f19fe471a2a2225df52e6f5ad25). The devcontainer intentionally uses LibreLane 3.0.5 to match the current `ttihp26b` action default.
+
+It currently contains the mandatory **smoke-test tile**, not the final application: `tt_um_smoketest` is an asynchronously reset 8-bit registered counter used to qualify the local and GitHub RTL-to-GDS pipeline.
 
 See [the generated project documentation](docs/info.md) for operation and hardware testing details.
 
@@ -13,12 +15,12 @@ See [the generated project documentation](docs/info.md) for operation and hardwa
 | Path | Purpose |
 |---|---|
 | `src/project.v` | Synthesizable Tiny Tapeout top module |
-| `src/config.json` | LibreLane 1x1 Sky130 hardening configuration |
-| `test/tb.v` | Cocotb-compatible RTL and gate-level wrapper |
+| `src/config.json` | LibreLane 1x1 IHP SG13G2 hardening configuration |
+| `test/tb.v` | Cocotb-compatible RTL and IHP gate-level wrapper |
 | `test/test.py` | Self-checking ten-cycle smoke test |
-| `test/Makefile` | Icarus simulation, lint, and gate-level targets |
+| `test/Makefile` | Icarus simulation, lint, and IHP gate-level targets |
 | `info.yaml` | Tiny Tapeout metadata, source list, and pinout |
-| `.github/workflows/` | Test, GDS/precheck/GL/viewer, docs, and FPGA automation |
+| `.github/workflows/` | Test, IHP GDS/precheck/GL/viewer, docs, and FPGA automation |
 | `scripts/` | Reproducible Windows setup and local verification |
 
 ## Prerequisites
@@ -51,6 +53,8 @@ Install Icarus Verilog, GTKWave, GNU Make, Python 3.10+, and GitHub CLI with you
 python3 -m pip install -r test/requirements.txt
 ```
 
+For local IHP hardening or gate-level simulation, use the repository dev container or another environment containing the `ihp-sg13g2` PDK under `PDK_ROOT`.
+
 ## Local quality gate
 
 On Windows, run the complete check from the repository root:
@@ -68,11 +72,13 @@ make clean
 make
 ```
 
-Expected result: metadata/top-module bindings validate and one Cocotb test passes, with the counter producing values 1 through 10 on consecutive rising clock edges. The waveform is written to `test/tb.fst` and can be opened with `gtkwave test/tb.fst test/tb.gtkw`.
+Expected result: the metadata, cross-file module bindings, and IHP 26b target bindings validate, and one Cocotb test passes with the counter producing values 1 through 10 on consecutive rising clock edges. The waveform is written to `test/tb.fst` and can be opened with `gtkwave test/tb.fst test/tb.gtkw`.
+
+This local gate validates metadata and RTL. Physical IHP hardening, Tiny Tapeout precheck, and the generated gate-level netlist are validated by the `gds` workflow.
 
 ## GitHub CI/CD
 
-The `test` workflow runs lint and RTL simulation on pushes, pull requests, and manual dispatches. The `gds` workflow runs the four Tiny Tapeout delivery jobs: LibreLane GDS hardening, precheck, gate-level simulation, and viewer generation.
+The `test` workflow runs lint and RTL simulation on pushes, pull requests, and manual dispatches. The `gds` workflow uses the official `ttihp26b` action contract with `pdk: ihp-sg13g2` and runs LibreLane GDS hardening, precheck, IHP gate-level simulation, and viewer generation. The `docs` and manual FPGA workflows also use the `ttihp26b` action release.
 
 After authenticating GitHub CLI:
 
@@ -82,7 +88,7 @@ gh run list --repo zanderivo/tt-submission-cohort3 --limit 10
 gh run watch --repo zanderivo/tt-submission-cohort3
 ```
 
-Do not trigger a final GDS delivery from uncommitted local files. Once an intentional commit is pushed, run or inspect `gds.yaml` in the same way.
+Do not trigger a final GDS delivery from uncommitted local files. Once an intentional commit is pushed, run or inspect `gds.yaml` in the same way. Before submission through the Tiny Tapeout portal, confirm the GDS, precheck, gate-level test, and viewer jobs are green for the committed revision.
 
 ## Final-application handoff checklist
 
