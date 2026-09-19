@@ -135,12 +135,26 @@ module tt_um_zanderivo_voronoi (
         endcase
     end
 
-    wire [7:0] train_delta_x = (sample_x >= winner_cx) ?
-                               (sample_x - winner_cx) : (winner_cx - sample_x);
-    wire [7:0] train_delta_y = (sample_y >= winner_cy) ?
-                               (sample_y - winner_cy) : (winner_cy - sample_y);
-    wire [4:0] train_step_x = train_delta_x[7:3];
-    wire [4:0] train_step_y = train_delta_y[7:3];
+    function [4:0] abs_delta_div8;
+        input [7:0] lhs;
+        input [7:0] rhs;
+        begin
+            if (lhs >= rhs) begin
+                if (lhs[2:0] < rhs[2:0])
+                    abs_delta_div8 = lhs[7:3] - rhs[7:3] - 5'd1;
+                else
+                    abs_delta_div8 = lhs[7:3] - rhs[7:3];
+            end else begin
+                if (rhs[2:0] < lhs[2:0])
+                    abs_delta_div8 = rhs[7:3] - lhs[7:3] - 5'd1;
+                else
+                    abs_delta_div8 = rhs[7:3] - lhs[7:3];
+            end
+        end
+    endfunction
+
+    wire [4:0] train_step_x = abs_delta_div8(sample_x, winner_cx);
+    wire [4:0] train_step_y = abs_delta_div8(sample_y, winner_cy);
     wire [8:0] train_sum_x = {1'b0, winner_cx} + {4'b0000, train_step_x};
     wire [8:0] train_sum_y = {1'b0, winner_cy} + {4'b0000, train_step_y};
 
@@ -384,7 +398,7 @@ module distance_lane (
     assign dy = (qy >= cy) ? (qy - cy) : (cy - qy);
 
     wire [7:0] max_d = (dx >= dy) ? dx : dy;
-    wire [7:0] min_d = (dx >= dy) ? dy : dx;
+    wire [6:0] min_d_half = (dx >= dy) ? dy[7:1] : dx[7:1];
     wire [15:0] xor_xy = {qx ^ cx, qy ^ cy};
 
     wire [1:0] pop2_0 = {1'b0, xor_xy[0]}  + {1'b0, xor_xy[1]};
@@ -407,7 +421,7 @@ module distance_lane (
         case (mode)
             2'b00: distance = {1'b0, dx} + {1'b0, dy};
             2'b01: distance = {1'b0, max_d};
-            2'b10: distance = {1'b0, max_d} + {2'b00, min_d[7:1]};
+            2'b10: distance = {1'b0, max_d} + {2'b00, min_d_half};
             default: distance = {4'b0000, pop16};
         endcase
     end
