@@ -3,7 +3,7 @@
 
 import cocotb
 from cocotb.clock import Clock
-from cocotb.triggers import FallingEdge, ReadOnly, RisingEdge, Timer
+from cocotb.triggers import FallingEdge, RisingEdge, Timer
 
 
 @cocotb.test()
@@ -15,10 +15,12 @@ async def test_counter_increments_for_ten_clock_cycles(dut):
     dut.clk.value = 0
     dut.rst_n.value = 0
 
-    clock = Clock(dut.clk, 10, unit="ns")
+    # A deliberately slow verification clock and settling delay keep this test
+    # valid for both zero-delay RTL and the unit-delay synthesized netlist.
+    clock = Clock(dut.clk, 100, unit="ns")
     cocotb.start_soon(clock.start())
 
-    await Timer(1, unit="ns")
+    await Timer(20, unit="ns")
     assert dut.uo_out.value == 0, "asynchronous reset did not clear the counter"
     assert dut.uio_out.value == 0, "unused bidirectional outputs must be low"
     assert dut.uio_oe.value == 0, "unused bidirectional pins must remain inputs"
@@ -28,7 +30,7 @@ async def test_counter_increments_for_ten_clock_cycles(dut):
 
     for expected_count in range(1, 11):
         await RisingEdge(dut.clk)
-        await ReadOnly()
+        await Timer(20, unit="ns")
         assert dut.uo_out.value == expected_count, (
             f"expected count {expected_count}, got {dut.uo_out.value.integer}"
         )
